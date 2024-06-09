@@ -15,10 +15,10 @@ QueueHandle_t canQueue;
 const int rx_queue_size = 10;
 twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(GPIO_NUM_27, GPIO_NUM_26, TWAI_MODE_NORMAL);
 twai_timing_config_t t_config = TWAI_TIMING_CONFIG_500KBITS();
-twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
+twai_filter_config_t f_config = {.acceptance_code = 0xFD000000, .acceptance_mask = 0x001FFFFF, .single_filter = true};
 
 // Konfiguracja WiFi
-const char *default_ssid = "miki3";
+const char *default_ssid = "miki4";
 const char *default_password = "mikimiki";
 char ssid[32];
 char password[64];
@@ -238,9 +238,11 @@ void onClientData(void *arg, AsyncClient *client, void *data, size_t len)
     int idx1 = command.indexOf(',');
     int idx2 = command.indexOf(',', idx1 + 1);
 
-    f_config.acceptance_code = (uint32_t)strtol(command.substring(10, idx1).c_str(), NULL, 16);
-    f_config.acceptance_mask = (uint32_t)strtol(command.substring(idx1 + 1, idx2).c_str(), NULL, 16);
+    f_config.acceptance_code = (uint32_t)strtoul(command.substring(10, idx1).c_str(), NULL, 16);
+    f_config.acceptance_mask = (uint32_t)strtoul(command.substring(idx1 + 1, idx2).c_str(), NULL, 16);
     f_config.single_filter = command.substring(idx2 + 1).toInt();
+
+    Serial.printf("Set filter to: 0x%08x 0x%08x %d", f_config.acceptance_code, f_config.acceptance_mask, f_config.single_filter);
 
     twai_stop();
     twai_driver_uninstall();
