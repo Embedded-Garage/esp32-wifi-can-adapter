@@ -13,10 +13,13 @@
 // Konfiguracja CAN
 QueueHandle_t canQueue;
 const int rx_queue_size = 10;
+twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(GPIO_NUM_27, GPIO_NUM_26, TWAI_MODE_NORMAL);
+twai_timing_config_t t_config = TWAI_TIMING_CONFIG_500KBITS();
+twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
 
 // Konfiguracja WiFi
-const char *default_ssid = "";
-const char *default_password = "";
+const char *default_ssid = "miki3";
+const char *default_password = "mikimiki";
 char ssid[32];
 char password[64];
 Preferences preferences;
@@ -63,20 +66,6 @@ void setup()
     strcpy(password, default_password);
   }
 
-  twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(GPIO_NUM_27, GPIO_NUM_26, TWAI_MODE_NORMAL);
-  twai_timing_config_t t_config = TWAI_TIMING_CONFIG_500KBITS();
-  twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
-
-  // Install TWAI driver
-  if (twai_driver_install(&g_config, &t_config, &f_config) == ESP_OK)
-  {
-    printf("Driver installed\n");
-  }
-  else
-  {
-    printf("Failed to install driver\n");
-    return;
-  }
 
   // Połączenie z WiFi
   WiFi.begin(ssid, password);
@@ -109,6 +98,27 @@ void setup()
   // Utworzenie kolejki dla ramek CAN
   canQueue = xQueueCreate(rx_queue_size, sizeof(twai_message_t));
 
+    // Install TWAI driver
+  if (twai_driver_install(&g_config, &t_config, &f_config) == ESP_OK)
+  {
+    printf("Driver installed\n");
+  }
+  else
+  {
+    printf("Failed to install driver\n");
+    return;
+  }
+  // Start TWAI driver
+  if (twai_start() == ESP_OK)
+  {
+    printf("Driver started\n");
+  }
+  else
+  {
+    printf("Failed to start driver\n");
+    return;
+  }
+
   // Utworzenie zadań FreeRTOS
   xTaskCreatePinnedToCore(canReceiveTask, "CAN Receive Task", 4096, NULL, 1, NULL, 0);
   xTaskCreatePinnedToCore(clientSendTask, "Client Send Task", 4096, NULL, 1, NULL, 1);
@@ -122,17 +132,6 @@ void loop()
 void canReceiveTask(void *param)
 {
   twai_message_t message;
-
-  // Start TWAI driver
-  if (twai_start() == ESP_OK)
-  {
-    printf("Driver started\n");
-  }
-  else
-  {
-    printf("Failed to start driver\n");
-    return;
-  }
 
   while (true)
   {
@@ -196,7 +195,6 @@ void onClientData(void *arg, AsyncClient *client, void *data, size_t len)
   {
     // Przykladowa implementacja zmiany prędkości
     int speed = command.substring(9).toInt();
-    twai_timing_config_t t_config;
     switch (speed)
     {
     case 1000:
@@ -226,8 +224,6 @@ void onClientData(void *arg, AsyncClient *client, void *data, size_t len)
     }
     twai_stop();
     twai_driver_uninstall();
-    twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(GPIO_NUM_27, GPIO_NUM_26, TWAI_MODE_NORMAL);
-    twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
     if (twai_driver_install(&g_config, &t_config, &f_config) == ESP_OK && twai_start() == ESP_OK)
     {
       client->write("OK\r\n");
@@ -242,15 +238,12 @@ void onClientData(void *arg, AsyncClient *client, void *data, size_t len)
     int idx1 = command.indexOf(',');
     int idx2 = command.indexOf(',', idx1 + 1);
 
-    twai_filter_config_t f_config;
     f_config.acceptance_code = (uint32_t)strtol(command.substring(10, idx1).c_str(), NULL, 16);
     f_config.acceptance_mask = (uint32_t)strtol(command.substring(idx1 + 1, idx2).c_str(), NULL, 16);
     f_config.single_filter = command.substring(idx2 + 1).toInt();
 
     twai_stop();
     twai_driver_uninstall();
-    twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(GPIO_NUM_27, GPIO_NUM_26, TWAI_MODE_NORMAL);
-    twai_timing_config_t t_config = TWAI_TIMING_CONFIG_1MBITS();
     if (twai_driver_install(&g_config, &t_config, &f_config) == ESP_OK && twai_start() == ESP_OK)
     {
       client->write("OK\r\n");
@@ -284,14 +277,17 @@ void onClientData(void *arg, AsyncClient *client, void *data, size_t len)
       String byteStr = dataStr.substring(i * 2, i * 2 + 2);
       message.data[i] = (uint8_t)strtol(byteStr.c_str(), NULL, 16);
     }
-
-    if (twai_transmit(&message, pdMS_TO_TICKS(1000)) == ESP_OK)
+    twai_clear_transmit_queue();
+    esp_err_t err = twai_transmit(&message, pdMS_TO_TICKS(100));
+    if (err == ESP_OK)
     {
       client->write("OK\r\n");
     }
     else
     {
-      client->write("ERROR\r\n");
+      char response[128];
+      sprintf(response, "ERROR: %d\r\n", err);
+      client->write(response);
     }
   }
   else if (command.startsWith("AT+WIFI_SSID="))
