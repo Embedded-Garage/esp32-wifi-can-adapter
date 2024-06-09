@@ -7,6 +7,7 @@
 #include <WiFi.h>
 #include <AsyncTCP.h>
 #include <vector>
+#include <Preferences.h>
 #include "driver/twai.h"
 
 // Konfiguracja CAN
@@ -15,8 +16,11 @@ const int interval = 1000;
 const int rx_queue_size = 10;
 
 // Konfiguracja WiFi
-const char *ssid = "miki3";
-const char *password = "mikimiki";
+const char *default_ssid = "";
+const char *default_password = "";
+char ssid[32];
+char password[64];
+Preferences preferences;
 
 // Konfiguracja serwera TCP
 AsyncServer *server = NULL;
@@ -38,8 +42,27 @@ void setup()
 
   Serial.println("Basic Demo - ESP32-Arduino-CAN");
 
+  preferences.begin("wifi", false);
+  if (preferences.isKey("ssid"))
+  {
+    preferences.getString("ssid", ssid, sizeof(ssid));
+  }
+  else
+  {
+    strcpy(ssid, default_ssid);
+  }
+
+  if (preferences.isKey("password"))
+  {
+    preferences.getString("password", password, sizeof(password));
+  }
+  else
+  {
+    strcpy(password, default_password);
+  }
+
   twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(GPIO_NUM_27, GPIO_NUM_26, TWAI_MODE_NORMAL);
-  twai_timing_config_t t_config = TWAI_TIMING_CONFIG_1MBITS();
+  twai_timing_config_t t_config = TWAI_TIMING_CONFIG_500KBITS();
   twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
 
   // Install TWAI driver
@@ -66,14 +89,26 @@ void setup()
 
   // Połączenie z WiFi
   WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED)
+  unsigned long startAttemptTime = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000)
   {
     delay(1000);
     Serial.println("Connecting to WiFi...");
   }
-  Serial.println("Connected to WiFi");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
+
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    Serial.println("Failed to connect to WiFi. Starting Access Point.");
+    WiFi.softAP("EmbeddedGarage_CAN_tool");
+    Serial.print("Access Point IP: ");
+    Serial.println(WiFi.softAPIP());
+  }
+  else
+  {
+    Serial.println("Connected to WiFi");
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
+  }
 
   // Utworzenie serwera TCP
   server = new AsyncServer(1234); // port 1234
@@ -135,23 +170,43 @@ void onClientData(void *arg, AsyncClient *client, void *data, size_t len)
     // Przykladowa implementacja zmiany prędkości
     int speed = command.substring(9).toInt();
     twai_timing_config_t t_config;
-    switch (speed) {
-      case 1000: t_config = TWAI_TIMING_CONFIG_1MBITS(); break;
-      case 800: t_config = TWAI_TIMING_CONFIG_800KBITS(); break;
-      case 500: t_config = TWAI_TIMING_CONFIG_500KBITS(); break;
-      case 250: t_config = TWAI_TIMING_CONFIG_250KBITS(); break;
-      case 125: t_config = TWAI_TIMING_CONFIG_125KBITS(); break;
-      case 100: t_config = TWAI_TIMING_CONFIG_100KBITS(); break;
-      case 50: t_config = TWAI_TIMING_CONFIG_50KBITS(); break;
-      default: t_config = TWAI_TIMING_CONFIG_1MBITS(); break;
+    switch (speed)
+    {
+    case 1000:
+      t_config = TWAI_TIMING_CONFIG_1MBITS();
+      break;
+    case 800:
+      t_config = TWAI_TIMING_CONFIG_800KBITS();
+      break;
+    case 500:
+      t_config = TWAI_TIMING_CONFIG_500KBITS();
+      break;
+    case 250:
+      t_config = TWAI_TIMING_CONFIG_250KBITS();
+      break;
+    case 125:
+      t_config = TWAI_TIMING_CONFIG_125KBITS();
+      break;
+    case 100:
+      t_config = TWAI_TIMING_CONFIG_100KBITS();
+      break;
+    case 50:
+      t_config = TWAI_TIMING_CONFIG_50KBITS();
+      break;
+    default:
+      t_config = TWAI_TIMING_CONFIG_1MBITS();
+      break;
     }
     twai_stop();
     twai_driver_uninstall();
     twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(GPIO_NUM_27, GPIO_NUM_26, TWAI_MODE_NORMAL);
     twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
-    if (twai_driver_install(&g_config, &t_config, &f_config) == ESP_OK && twai_start() == ESP_OK) {
+    if (twai_driver_install(&g_config, &t_config, &f_config) == ESP_OK && twai_start() == ESP_OK)
+    {
       client->write("OK\r\n");
-    } else {
+    }
+    else
+    {
       client->write("ERROR\r\n");
     }
   }
@@ -169,9 +224,12 @@ void onClientData(void *arg, AsyncClient *client, void *data, size_t len)
     twai_driver_uninstall();
     twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(GPIO_NUM_27, GPIO_NUM_26, TWAI_MODE_NORMAL);
     twai_timing_config_t t_config = TWAI_TIMING_CONFIG_1MBITS();
-    if (twai_driver_install(&g_config, &t_config, &f_config) == ESP_OK && twai_start() == ESP_OK) {
+    if (twai_driver_install(&g_config, &t_config, &f_config) == ESP_OK && twai_start() == ESP_OK)
+    {
       client->write("OK\r\n");
-    } else {
+    }
+    else
+    {
       client->write("ERROR\r\n");
     }
   }
@@ -208,6 +266,20 @@ void onClientData(void *arg, AsyncClient *client, void *data, size_t len)
     {
       client->write("ERROR\r\n");
     }
+  }
+  else if (command.startsWith("AT+WIFI_SSID="))
+  {
+    String new_ssid = command.substring(13);
+    new_ssid.toCharArray(ssid, sizeof(ssid));
+    preferences.putString("ssid", ssid);
+    client->write("OK\r\n");
+  }
+  else if (command.startsWith("AT+WIFI_PASS="))
+  {
+    String new_password = command.substring(13);
+    new_password.toCharArray(password, sizeof(password));
+    preferences.putString("password", password);
+    client->write("OK\r\n");
   }
   else
   {
