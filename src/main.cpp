@@ -89,24 +89,22 @@ void loop()
   // Odbieranie ramek CAN
   if (twai_receive(&message, pdMS_TO_TICKS(10)) == ESP_OK)
   {
+    char frameData[128];
+    sprintf(frameData, "AT+RECV=%03X,%d,%d,", message.identifier, message.data_length_code, message.extd);
+    for (int i = 0; i < message.data_length_code; i++)
     {
-      char frameData[128];
-      sprintf(frameData, "AT+RECV=%03X,%d,", message.identifier, message.data_length_code);
-      for (int i = 0; i < message.data_length_code; i++)
-      {
-        sprintf(frameData + strlen(frameData), "%02X", message.data[i]);
-      }
-      strcat(frameData, "\r\n");
+      sprintf(frameData + strlen(frameData), "%02X", message.data[i]);
+    }
+    strcat(frameData, "\r\n");
 
-      Serial.println(frameData);
+    Serial.println(frameData);
 
-      // Wysłanie ramki CAN do wszystkich podłączonych klientów
-      for (auto client : clients)
+    // Wysłanie ramki CAN do wszystkich podłączonych klientów
+    for (auto client : clients)
+    {
+      if (client->connected())
       {
-        if (client->connected())
-        {
-          client->write(frameData);
-        }
+        client->write(frameData);
       }
     }
   }
@@ -134,25 +132,65 @@ void onClientData(void *arg, AsyncClient *client, void *data, size_t len)
   // Przetwarzanie komend AT
   if (command.startsWith("AT+SPEED="))
   {
-    client->write("NOT IMPLEMENTED\r\n");
+    // Przykladowa implementacja zmiany prędkości
+    int speed = command.substring(9).toInt();
+    twai_timing_config_t t_config;
+    switch (speed) {
+      case 1000: t_config = TWAI_TIMING_CONFIG_1MBITS(); break;
+      case 800: t_config = TWAI_TIMING_CONFIG_800KBITS(); break;
+      case 500: t_config = TWAI_TIMING_CONFIG_500KBITS(); break;
+      case 250: t_config = TWAI_TIMING_CONFIG_250KBITS(); break;
+      case 125: t_config = TWAI_TIMING_CONFIG_125KBITS(); break;
+      case 100: t_config = TWAI_TIMING_CONFIG_100KBITS(); break;
+      case 50: t_config = TWAI_TIMING_CONFIG_50KBITS(); break;
+      default: t_config = TWAI_TIMING_CONFIG_1MBITS(); break;
+    }
+    twai_stop();
+    twai_driver_uninstall();
+    twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(GPIO_NUM_27, GPIO_NUM_26, TWAI_MODE_NORMAL);
+    twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
+    if (twai_driver_install(&g_config, &t_config, &f_config) == ESP_OK && twai_start() == ESP_OK) {
+      client->write("OK\r\n");
+    } else {
+      client->write("ERROR\r\n");
+    }
   }
   else if (command.startsWith("AT+FILTER="))
   {
-    client->write("NOT IMPLEMENTED\r\n");
+    int idx1 = command.indexOf(',');
+    int idx2 = command.indexOf(',', idx1 + 1);
+
+    twai_filter_config_t f_config;
+    f_config.acceptance_code = (uint32_t)strtol(command.substring(10, idx1).c_str(), NULL, 16);
+    f_config.acceptance_mask = (uint32_t)strtol(command.substring(idx1 + 1, idx2).c_str(), NULL, 16);
+    f_config.single_filter = command.substring(idx2 + 1).toInt();
+
+    twai_stop();
+    twai_driver_uninstall();
+    twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(GPIO_NUM_27, GPIO_NUM_26, TWAI_MODE_NORMAL);
+    twai_timing_config_t t_config = TWAI_TIMING_CONFIG_1MBITS();
+    if (twai_driver_install(&g_config, &t_config, &f_config) == ESP_OK && twai_start() == ESP_OK) {
+      client->write("OK\r\n");
+    } else {
+      client->write("ERROR\r\n");
+    }
   }
   else if (command.startsWith("AT+SEND="))
   {
     int idx1 = command.indexOf(',');
     int idx2 = command.indexOf(',', idx1 + 1);
+    int idx3 = command.indexOf(',', idx2 + 1);
     String msgIDStr = command.substring(8, idx1);
     String dlcStr = command.substring(idx1 + 1, idx2);
-    String dataStr = command.substring(idx2 + 1);
+    String extdStr = command.substring(idx2 + 1, idx3);
+    String dataStr = command.substring(idx3 + 1);
 
     int msgID = (int)strtol(msgIDStr.c_str(), NULL, 16);
     int dlc = dlcStr.toInt();
+    int extd = extdStr.toInt();
 
     twai_message_t message;
-    message.extd = 0;
+    message.extd = extd;
     message.identifier = msgID;
     message.data_length_code = dlc;
 
