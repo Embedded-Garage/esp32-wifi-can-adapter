@@ -11,8 +11,7 @@
 #include "driver/twai.h"
 
 // Konfiguracja CAN
-unsigned long previousMillis = 0;
-const int interval = 1000;
+QueueHandle_t canQueue;
 const int rx_queue_size = 10;
 
 // Konfiguracja WiFi
@@ -29,6 +28,9 @@ std::vector<AsyncClient *> clients;
 void onClientConnected(void *arg, AsyncClient *client);
 void onClientDisconnected(void *arg, AsyncClient *client);
 void onClientData(void *arg, AsyncClient *client, void *data, size_t len);
+
+void canReceiveTask(void *param);
+void clientSendTask(void *param);
 
 void setup()
 {
@@ -76,17 +78,6 @@ void setup()
     return;
   }
 
-  // Start TWAI driver
-  if (twai_start() == ESP_OK)
-  {
-    printf("Driver started\n");
-  }
-  else
-  {
-    printf("Failed to start driver\n");
-    return;
-  }
-
   // Połączenie z WiFi
   WiFi.begin(ssid, password);
   unsigned long startAttemptTime = millis();
@@ -114,32 +105,68 @@ void setup()
   server = new AsyncServer(1234); // port 1234
   server->onClient(&onClientConnected, server);
   server->begin();
+
+  // Utworzenie kolejki dla ramek CAN
+  canQueue = xQueueCreate(rx_queue_size, sizeof(twai_message_t));
+
+  // Utworzenie zadań FreeRTOS
+  xTaskCreatePinnedToCore(canReceiveTask, "CAN Receive Task", 4096, NULL, 1, NULL, 0);
+  xTaskCreatePinnedToCore(clientSendTask, "Client Send Task", 4096, NULL, 1, NULL, 1);
 }
 
 void loop()
 {
+  // Main loop is empty as we are using FreeRTOS tasks
+}
+
+void canReceiveTask(void *param)
+{
   twai_message_t message;
-  unsigned long currentMillis = millis();
 
-  // Odbieranie ramek CAN
-  if (twai_receive(&message, pdMS_TO_TICKS(10)) == ESP_OK)
+  // Start TWAI driver
+  if (twai_start() == ESP_OK)
   {
-    char frameData[128];
-    sprintf(frameData, "AT+RECV=%03X,%d,%d,", message.identifier, message.data_length_code, message.extd);
-    for (int i = 0; i < message.data_length_code; i++)
+    printf("Driver started\n");
+  }
+  else
+  {
+    printf("Failed to start driver\n");
+    return;
+  }
+
+  while (true)
+  {
+    if (twai_receive(&message, pdMS_TO_TICKS(10)) == ESP_OK)
     {
-      sprintf(frameData + strlen(frameData), "%02X", message.data[i]);
+      xQueueSend(canQueue, &message, portMAX_DELAY);
     }
-    strcat(frameData, "\r\n");
+  }
+}
 
-    Serial.println(frameData);
-
-    // Wysłanie ramki CAN do wszystkich podłączonych klientów
-    for (auto client : clients)
+void clientSendTask(void *param)
+{
+  twai_message_t message;
+  while (true)
+  {
+    if (xQueueReceive(canQueue, &message, portMAX_DELAY) == pdPASS)
     {
-      if (client->connected())
+      char frameData[128];
+      sprintf(frameData, "AT+RECV=%03X,%d,%d,", message.identifier, message.data_length_code, message.extd);
+      for (int i = 0; i < message.data_length_code; i++)
       {
-        client->write(frameData);
+        sprintf(frameData + strlen(frameData), "%02X", message.data[i]);
+      }
+      strcat(frameData, "\r\n");
+
+      Serial.println(frameData);
+
+      // Wysłanie ramki CAN do wszystkich podłączonych klientów
+      for (auto client : clients)
+      {
+        if (client->connected())
+        {
+          client->write(frameData);
+        }
       }
     }
   }
