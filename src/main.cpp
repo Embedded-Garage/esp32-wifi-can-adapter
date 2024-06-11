@@ -33,7 +33,7 @@ void setup()
 
   if (!tcp_ctrl_init())
   {
-    Serial.println("Wifi initialization error!");
+    Serial.println("TCP initialization error!");
     return;
   }
 

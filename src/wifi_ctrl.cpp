@@ -14,6 +14,7 @@ bool wifi_ctrl_init()
     Preferences preferences;
 
     preferences.begin("wifi", false);
+
     if (preferences.isKey("ssid"))
     {
         preferences.getString("ssid", ssid, sizeof(ssid));
@@ -21,15 +22,17 @@ bool wifi_ctrl_init()
     else
     {
         strcpy(ssid, default_ssid);
+        preferences.putString("ssid", default_ssid);
     }
 
-    if (preferences.isKey("password"))
+    if (preferences.isKey("pass"))
     {
-        preferences.getString("password", password, sizeof(password));
+        preferences.getString("pass", password, sizeof(password));
     }
     else
     {
         strcpy(password, default_password);
+        preferences.putString("pass", default_password);
     }
 
     // Połączenie z WiFi
