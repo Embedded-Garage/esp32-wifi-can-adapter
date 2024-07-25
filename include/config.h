@@ -1,11 +1,12 @@
 #ifndef __CONFIG_H__
 #define __CONFIG_H__
 
+#ifdef BOARD_LILYGO_CAN
 // PIN
 #define PIN_5V_EN 16
 
-#define CAN_TX_PIN 26
-#define CAN_RX_PIN 27
+#define CAN_TX_PIN 27
+#define CAN_RX_PIN 26
 #define CAN_SE_PIN 23
 
 #define RS485_EN_PIN 17 // 17 /RE
@@ -19,5 +20,10 @@
 #define SD_CS_PIN 13
 
 #define WS2812_PIN 4
+#endif
+
+#ifdef BOARD_WIWIK_V2_1
+
+#endif
 
 #endif

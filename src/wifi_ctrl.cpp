@@ -41,20 +41,20 @@ bool wifi_ctrl_init()
     while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000)
     {
         delay(1000);
-        Serial.println("Connecting to WiFi...");
+        Serial.println("AT+LOG_I=Connecting to WiFi...");
     }
 
     if (WiFi.status() != WL_CONNECTED)
     {
-        Serial.println("Failed to connect to WiFi. Starting Access Point.");
+        Serial.println("AT+LOG_W=Failed to connect to WiFi. Starting Access Point.");
         WiFi.softAP("EmbeddedGarage_CAN_tool");
-        Serial.print("Access Point IP: ");
+        Serial.print("AT+LOG_I=Access Point IP: ");
         Serial.println(WiFi.softAPIP());
     }
     else
     {
-        Serial.println("Connected to WiFi");
-        Serial.print("IP address: ");
+        Serial.println("AT+LOG_I=Connected to WiFi");
+        Serial.print("AT+LOG_I=IP address: ");
         Serial.println(WiFi.localIP());
     }
 

@@ -40,7 +40,7 @@ void tcp_ctrl_sendToAllClients(char data[], int len)
 
 void onClientConnected(void *arg, AsyncClient *client)
 {
-    Serial.println("New client connected");
+    Serial.println("AT+LOG_I=New client connected");
     client->onData(&onClientData, client);
     client->onDisconnect(&onClientDisconnected, client);
 
@@ -51,7 +51,7 @@ void onClientConnected(void *arg, AsyncClient *client)
 
 void onClientDisconnected(void *arg, AsyncClient *client)
 {
-    Serial.println("Client disconnected");
+    Serial.println("AT+LOG_I=Client disconnected");
     xSemaphoreTake(xClientsMutex, portMAX_DELAY);
     clients.erase(std::remove(clients.begin(), clients.end(), client), clients.end());
     xSemaphoreGive(xClientsMutex);

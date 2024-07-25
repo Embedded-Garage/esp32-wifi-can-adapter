@@ -12,6 +12,8 @@
 #include "wifi_ctrl.h"
 #include "tcp_ctrl.h"
 #include "can_rx.h"
+#include "log_tx.h"
+#include "serial.h"
 
 void setup()
 {
@@ -21,35 +23,41 @@ void setup()
   pinMode(CAN_SE_PIN, OUTPUT);
   digitalWrite(CAN_SE_PIN, LOW);
 
-  Serial.begin(115200);
+  Serial.begin(921600);
 
-  Serial.println("Basic Demo - ESP32-Arduino-CAN");
+  Serial.println("AT+LOG_I=Embedded Garage - CAN/Wifi controller");
 
   if (!wifi_ctrl_init())
   {
-    Serial.println("Wifi initialization error!");
+    Serial.println("AT+LOG_I=Wifi initialization error!");
     return;
   }
 
   if (!tcp_ctrl_init())
   {
-    Serial.println("TCP initialization error!");
+    Serial.println("AT+LOG_I=TCP initialization error!");
     return;
   }
 
-  // Utworzenie kolejki dla ramek CAN
-  canRxQueue = xQueueCreate(rxQueueSize, sizeof(twai_message_t));
-  canControlQueue = xQueueCreate(canControlQueueSize, sizeof(can_ctrl_msg_s));
-  tcpTxQueue = xQueueCreate(tcpTxQueueSize, sizeof(tcp_tx_msg_s));
-  appQueue = xQueueCreate(appQueueSize, sizeof(app_msg_s));
+  if (!queues_init())
+  {
+    Serial.println("AT+LOG_I=Queues initialization error!");
+    return;
+  }
 
-  xClientsMutex = xSemaphoreCreateMutex();
+  if (!mutexes_init())
+  {
+    Serial.println("AT+LOG_I=Mutexes initialization error!");
+    return;
+  }
 
   // Utworzenie zadań FreeRTOS
   xTaskCreatePinnedToCore(canRxTask, "CAN Rx Task", 4096, NULL, 2, NULL, 1);
   xTaskCreatePinnedToCore(canControlTask, "CAN Control Task", 4096, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(appTask, "App Task", 4096, NULL, 2, NULL, 0);
   xTaskCreatePinnedToCore(tcpTxTask, "TCP Tx Task", 4096, NULL, 1, NULL, 0);
+  xTaskCreatePinnedToCore(serialRxTask, "Serial Rx Task", 4096, NULL, 3, NULL, 1);
+  xTaskCreatePinnedToCore(logTxTask, "Log Tx Task", 4096, NULL, 3, NULL, 1);
 }
 
 void loop()

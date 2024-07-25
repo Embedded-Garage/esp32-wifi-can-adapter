@@ -2,6 +2,7 @@
 #include <Preferences.h>
 
 #include "can_ctrl.h"
+#include "log_tx.h"
 
 #include "queues.h"
 #include "app.h"
@@ -9,13 +10,13 @@
 void appTask(void *param)
 {
     app_msg_s msg;
-    tcp_tx_msg_s tcp_tx_msg;
+    log_tx_msg_s log_tx_msg;
     can_ctrl_msg_s can_ctrl_msg;
     Preferences preferences;
 
     preferences.begin("wifi", false);
 
-    Serial.println("Create tcpTxTask");
+    Serial.println("AT+LOG_I=Create tcpTxTask");
 
     while (true)
     {
@@ -24,25 +25,23 @@ void appTask(void *param)
             switch (msg.type)
             {
             case APP_MSG_TYPE_CAN_RX:
-                Serial.println("APP_MSG_TYPE_CAN_RX");
-                tcp_tx_msg.len = sprintf(tcp_tx_msg.data,
+                log_tx_msg.len = sprintf(log_tx_msg.data,
                                          "AT+RECV=%03X,%d,%d,",
                                          msg.can_msg.identifier,
                                          msg.can_msg.data_length_code,
                                          msg.can_msg.extd);
                 for (int i = 0; i < msg.can_msg.data_length_code; i++)
                 {
-                    tcp_tx_msg.len += sprintf(&tcp_tx_msg.data[tcp_tx_msg.len], "%02X", msg.can_msg.data[i]);
+                    log_tx_msg.len += sprintf(&log_tx_msg.data[log_tx_msg.len], "%02X", msg.can_msg.data[i]);
                 }
-                tcp_tx_msg.len += sprintf(&tcp_tx_msg.data[tcp_tx_msg.len], "\r\n");
+                log_tx_msg.len += sprintf(&log_tx_msg.data[log_tx_msg.len], "\r\n");
 
-                xQueueSend(tcpTxQueue, &tcp_tx_msg, 0);
+                xQueueSend(logTxQueue, &log_tx_msg, 0);
                 break;
             case APP_MSG_TYPE_TCP_RX:
+            case APP_MSG_TYPE_SERIAL_RX:
             {
-                Serial.println("APP_MSG_TYPE_TCP_RX");
                 String command = String(msg.tcp_rx_msg.data).substring(0, msg.tcp_rx_msg.len);
-                Serial.println("Received command: " + command);
                 // Przetwarzanie komend AT
                 if (command.startsWith("AT+SPEED="))
                 {
@@ -80,14 +79,15 @@ void appTask(void *param)
 
                     if (fail)
                     {
-                        tcp_tx_msg.len = sprintf(tcp_tx_msg.data, "ERROR\r\n");
-                        xQueueSend(tcpTxQueue, &tcp_tx_msg, 0);
+                        log_tx_msg.len = sprintf(log_tx_msg.data, "ERROR\r\n");
+                        xQueueSend(logTxQueue, &log_tx_msg, 0);
                     }
                     else
                     {
                         xQueueSend(canControlQueue, &can_ctrl_msg, 0);
-                        tcp_tx_msg.len = sprintf(tcp_tx_msg.data, "OK\r\n");
-                        xQueueSend(tcpTxQueue, &tcp_tx_msg, 0);
+                        memcpy(log_tx_msg.data, msg.tcp_rx_msg.data, msg.tcp_rx_msg.len);
+                        log_tx_msg.len = msg.tcp_rx_msg.len;
+                        xQueueSend(logTxQueue, &log_tx_msg, 0);
                     }
                 }
                 else if (command.startsWith("AT+FILTER="))
@@ -101,13 +101,14 @@ void appTask(void *param)
                     can_ctrl_msg.filter.acceptance_mask = (uint32_t)strtoul(command.substring(idx1 + 1, idx2).c_str(), NULL, 16);
                     can_ctrl_msg.filter.single_filter = command.substring(idx2 + 1).toInt();
 
-                    Serial.printf("Set filter to: 0x%08x 0x%08x %d",
-                                  can_ctrl_msg.filter.acceptance_code,
-                                  can_ctrl_msg.filter.acceptance_mask,
-                                  can_ctrl_msg.filter.single_filter);
+                    // Serial.printf("Set filter to: 0x%08x 0x%08x %d",
+                    //               can_ctrl_msg.filter.acceptance_code,
+                    //               can_ctrl_msg.filter.acceptance_mask,
+                    //               can_ctrl_msg.filter.single_filter);
                     xQueueSend(canControlQueue, &can_ctrl_msg, 0);
-                    tcp_tx_msg.len = sprintf(tcp_tx_msg.data, "OK\r\n");
-                    xQueueSend(tcpTxQueue, &tcp_tx_msg, 0);
+                    memcpy(log_tx_msg.data, msg.tcp_rx_msg.data, msg.tcp_rx_msg.len);
+                    log_tx_msg.len = msg.tcp_rx_msg.len;
+                    xQueueSend(logTxQueue, &log_tx_msg, 0);
                 }
                 else if (command.startsWith("AT+SEND="))
                 {
@@ -135,21 +136,28 @@ void appTask(void *param)
                         can_ctrl_msg.msg.data[i] = (uint8_t)strtol(byteStr.c_str(), NULL, 16);
                     }
                     xQueueSend(canControlQueue, &can_ctrl_msg, 0);
-                    tcp_tx_msg.len = sprintf(tcp_tx_msg.data, "OK\r\n");
-                    xQueueSend(tcpTxQueue, &tcp_tx_msg, 0);
+                    memcpy(log_tx_msg.data, msg.tcp_rx_msg.data, msg.tcp_rx_msg.len);
+                    log_tx_msg.len = msg.tcp_rx_msg.len;
+                    xQueueSend(logTxQueue, &log_tx_msg, 0);
                 }
                 else if (command.startsWith("AT+WIFI_SSID="))
                 {
                     preferences.putString("ssid", command.substring(13));
+                    memcpy(log_tx_msg.data, msg.tcp_rx_msg.data, msg.tcp_rx_msg.len);
+                    log_tx_msg.len = msg.tcp_rx_msg.len;
+                    xQueueSend(logTxQueue, &log_tx_msg, 0);
                 }
                 else if (command.startsWith("AT+WIFI_PASS="))
                 {
                     preferences.putString("pass", command.substring(13));
+                    memcpy(log_tx_msg.data, msg.tcp_rx_msg.data, msg.tcp_rx_msg.len);
+                    log_tx_msg.len = msg.tcp_rx_msg.len;
+                    xQueueSend(logTxQueue, &log_tx_msg, 0);
                 }
                 else
                 {
-                    tcp_tx_msg.len = sprintf((char *)tcp_tx_msg.data, "ERROR\r\n");
-                    xQueueSend(tcpTxQueue, &tcp_tx_msg, 0);
+                    // log_tx_msg.len = sprintf((char *)log_tx_msg.data, "ERROR\r\n");
+                    // xQueueSend(logTxQueue, &log_tx_msg, 0);
                 }
             }
             break;

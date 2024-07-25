@@ -9,14 +9,13 @@
 void canRxTask(void *param)
 {
     app_msg_s app_message = {.type = APP_MSG_TYPE_CAN_RX};
-    Serial.println("Create canRxTask");
+    Serial.println("AT+LOG_I=Create canRxTask");
 
     while (true)
     {
         if (twai_receive(&app_message.can_msg, 0) == ESP_OK)
         {
             xQueueSend(appQueue, &app_message, 0);
-            Serial.println("Sent CAN RX message to app");
         }
         else
         {
