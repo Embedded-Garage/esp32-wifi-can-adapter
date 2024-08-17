@@ -7,6 +7,7 @@
 #include "app.h"
 #include "queues.h"
 #include "mutexes.h"
+#include "statistics.h"
 
 AsyncServer *server = NULL;
 std::vector<AsyncClient *> clients;
@@ -64,6 +65,9 @@ void onClientData(void *arg, AsyncClient *client, void *data, size_t len)
     {
         memcpy(app_msg.tcp_rx_msg.data, data, len);
         app_msg.tcp_rx_msg.len = len;
-        xQueueSend(appQueue, &app_msg, 0);
+        if (pdPASS != xQueueSend(appQueue, &app_msg, 0))
+        {
+            statistics.lost_frames_tcp_to_app++;
+        }
     }
 }

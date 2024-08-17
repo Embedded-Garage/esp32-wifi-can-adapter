@@ -9,7 +9,7 @@ void canControlTask(void *param)
 {
   twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT((gpio_num_t)CAN_TX_PIN, (gpio_num_t)CAN_RX_PIN, TWAI_MODE_NORMAL);
   twai_timing_config_t t_config = TWAI_TIMING_CONFIG_500KBITS();
-  twai_filter_config_t f_config = {.acceptance_code = 0xFD000000, .acceptance_mask = 0x001FFFFF, .single_filter = true};
+  twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
 
   Serial.println("AT+LOG_I=Create canControlTask");
   // Install TWAI driver

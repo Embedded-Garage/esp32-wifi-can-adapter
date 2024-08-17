@@ -4,6 +4,7 @@
 #include <freertos/queue.h>
 #include "queues.h"
 #include "app.h"
+#include "statistics.h"
 
 void serialRxTask(void *parameter)
 {
@@ -25,7 +26,10 @@ void serialRxTask(void *parameter)
             {
                 if (valid)
                 {
-                    xQueueSend(appQueue, &msg, 0);
+                    if (pdPASS != xQueueSend(appQueue, &msg, 0))
+                    {
+                        statistics.lost_frames_serial_to_app++;
+                    }
                 }
                 else
                 {

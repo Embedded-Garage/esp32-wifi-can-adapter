@@ -19,7 +19,7 @@ QueueHandle_t tcpTxQueue;
 const int tcpTxQueueSize = 10;
 
 QueueHandle_t appQueue;
-const int appQueueSize = 10;
+const int appQueueSize = 50;
 
 QueueHandle_t serialTxQueue;
 const int serialTxQueueSize = 10;

@@ -5,6 +5,7 @@
 #include <freertos/queue.h>
 #include "queues.h"
 #include "app.h"
+#include "statistics.h"
 
 void canRxTask(void *param)
 {
@@ -13,13 +14,14 @@ void canRxTask(void *param)
 
     while (true)
     {
-        if (twai_receive(&app_message.can_msg, 0) == ESP_OK)
+        if (twai_receive(&app_message.can_msg, 1) == ESP_OK)
         {
-            xQueueSend(appQueue, &app_message, 0);
-        }
-        else
-        {
-            vTaskDelay(1);
+            statistics.total_rcvd_can_frames++;
+            app_message.timestamp = (uint64_t)esp_timer_get_time();
+            if (pdPASS != xQueueSend(appQueue, &app_message, 0))
+            {
+                statistics.lost_frames_can_to_app++;
+            }
         }
     }
 }

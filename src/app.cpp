@@ -6,6 +6,7 @@
 
 #include "queues.h"
 #include "app.h"
+#include "statistics.h"
 
 void appTask(void *param)
 {
@@ -26,17 +27,23 @@ void appTask(void *param)
             {
             case APP_MSG_TYPE_CAN_RX:
                 log_tx_msg.len = sprintf(log_tx_msg.data,
-                                         "AT+RECV=%03X,%d,%d,",
+                                         "AT+CAN_FRAME=%llu,%u,%X,%u,%u,%u",
+                                         msg.timestamp,
+                                         msg.direction,
                                          msg.can_msg.identifier,
                                          msg.can_msg.data_length_code,
-                                         msg.can_msg.extd);
+                                         msg.can_msg.extd,
+                                         msg.can_msg.rtr);
                 for (int i = 0; i < msg.can_msg.data_length_code; i++)
                 {
                     log_tx_msg.len += sprintf(&log_tx_msg.data[log_tx_msg.len], "%02X", msg.can_msg.data[i]);
                 }
                 log_tx_msg.len += sprintf(&log_tx_msg.data[log_tx_msg.len], "\r\n");
 
-                xQueueSend(logTxQueue, &log_tx_msg, 0);
+                if (pdPASS != xQueueSend(logTxQueue, &log_tx_msg, 0))
+                {
+                    statistics.lost_frames_app_to_log++;
+                }
                 break;
             case APP_MSG_TYPE_TCP_RX:
             case APP_MSG_TYPE_SERIAL_RX:
@@ -80,14 +87,23 @@ void appTask(void *param)
                     if (fail)
                     {
                         log_tx_msg.len = sprintf(log_tx_msg.data, "ERROR\r\n");
-                        xQueueSend(logTxQueue, &log_tx_msg, 0);
+                        if (pdPASS != xQueueSend(logTxQueue, &log_tx_msg, 0))
+                        {
+                            statistics.lost_frames_app_to_log++;
+                        }
                     }
                     else
                     {
-                        xQueueSend(canControlQueue, &can_ctrl_msg, 0);
+                        if (pdPASS != xQueueSend(canControlQueue, &can_ctrl_msg, 0))
+                        {
+                            statistics.lost_frames_app_to_can++;
+                        }
                         memcpy(log_tx_msg.data, msg.tcp_rx_msg.data, msg.tcp_rx_msg.len);
                         log_tx_msg.len = msg.tcp_rx_msg.len;
-                        xQueueSend(logTxQueue, &log_tx_msg, 0);
+                        if (pdPASS != xQueueSend(logTxQueue, &log_tx_msg, 0))
+                        {
+                            statistics.lost_frames_app_to_log++;
+                        }
                     }
                 }
                 else if (command.startsWith("AT+FILTER="))
@@ -101,14 +117,16 @@ void appTask(void *param)
                     can_ctrl_msg.filter.acceptance_mask = (uint32_t)strtoul(command.substring(idx1 + 1, idx2).c_str(), NULL, 16);
                     can_ctrl_msg.filter.single_filter = command.substring(idx2 + 1).toInt();
 
-                    // Serial.printf("Set filter to: 0x%08x 0x%08x %d",
-                    //               can_ctrl_msg.filter.acceptance_code,
-                    //               can_ctrl_msg.filter.acceptance_mask,
-                    //               can_ctrl_msg.filter.single_filter);
-                    xQueueSend(canControlQueue, &can_ctrl_msg, 0);
+                    if (pdPASS != xQueueSend(canControlQueue, &can_ctrl_msg, 0))
+                    {
+                        statistics.lost_frames_app_to_can++;
+                    }
                     memcpy(log_tx_msg.data, msg.tcp_rx_msg.data, msg.tcp_rx_msg.len);
                     log_tx_msg.len = msg.tcp_rx_msg.len;
-                    xQueueSend(logTxQueue, &log_tx_msg, 0);
+                    if (pdPASS != xQueueSend(logTxQueue, &log_tx_msg, 0))
+                    {
+                        statistics.lost_frames_app_to_log++;
+                    }
                 }
                 else if (command.startsWith("AT+SEND="))
                 {
@@ -117,17 +135,18 @@ void appTask(void *param)
                     int idx1 = command.indexOf(',');
                     int idx2 = command.indexOf(',', idx1 + 1);
                     int idx3 = command.indexOf(',', idx2 + 1);
+                    int idx4 = command.indexOf(',', idx3 + 1);
                     String msgIDStr = command.substring(8, idx1);
                     String dlcStr = command.substring(idx1 + 1, idx2);
                     String extdStr = command.substring(idx2 + 1, idx3);
-                    String dataStr = command.substring(idx3 + 1);
+                    String rtrStr = command.substring(idx3 + 1, idx4);
+                    String dataStr = command.substring(idx4 + 1);
 
-                    int msgID = (int)strtol(msgIDStr.c_str(), NULL, 16);
                     int dlc = dlcStr.toInt();
-                    int extd = extdStr.toInt();
 
-                    can_ctrl_msg.msg.extd = extd;
-                    can_ctrl_msg.msg.identifier = msgID;
+                    can_ctrl_msg.msg.extd = extdStr.toInt();
+                    can_ctrl_msg.msg.rtr = rtrStr.toInt();
+                    can_ctrl_msg.msg.identifier = (int)strtol(msgIDStr.c_str(), NULL, 16);
                     can_ctrl_msg.msg.data_length_code = dlc;
 
                     for (int i = 0; i < dlc; i++)
@@ -135,29 +154,60 @@ void appTask(void *param)
                         String byteStr = dataStr.substring(i * 2, i * 2 + 2);
                         can_ctrl_msg.msg.data[i] = (uint8_t)strtol(byteStr.c_str(), NULL, 16);
                     }
-                    xQueueSend(canControlQueue, &can_ctrl_msg, 0);
-                    memcpy(log_tx_msg.data, msg.tcp_rx_msg.data, msg.tcp_rx_msg.len);
-                    log_tx_msg.len = msg.tcp_rx_msg.len;
-                    xQueueSend(logTxQueue, &log_tx_msg, 0);
+                    if (pdPASS != xQueueSend(canControlQueue, &can_ctrl_msg, 0))
+                    {
+                        log_tx_msg.len = sprintf(log_tx_msg.data, "ERROR\r\n");
+                        if (pdPASS != xQueueSend(logTxQueue, &log_tx_msg, 0))
+                        {
+                            statistics.lost_frames_app_to_log++;
+                        }
+                        statistics.lost_frames_app_to_can++;
+                    }
+                    else
+                    {
+                        memcpy(log_tx_msg.data, msg.tcp_rx_msg.data, msg.tcp_rx_msg.len);
+                        log_tx_msg.len = msg.tcp_rx_msg.len;
+                        if (pdPASS != xQueueSend(logTxQueue, &log_tx_msg, 0))
+                        {
+                            statistics.lost_frames_app_to_log++;
+                        }
+                    }
                 }
                 else if (command.startsWith("AT+WIFI_SSID="))
                 {
                     preferences.putString("ssid", command.substring(13));
                     memcpy(log_tx_msg.data, msg.tcp_rx_msg.data, msg.tcp_rx_msg.len);
                     log_tx_msg.len = msg.tcp_rx_msg.len;
-                    xQueueSend(logTxQueue, &log_tx_msg, 0);
+                    if (pdPASS != xQueueSend(logTxQueue, &log_tx_msg, 0))
+                    {
+                        statistics.lost_frames_app_to_log++;
+                    }
                 }
                 else if (command.startsWith("AT+WIFI_PASS="))
                 {
                     preferences.putString("pass", command.substring(13));
                     memcpy(log_tx_msg.data, msg.tcp_rx_msg.data, msg.tcp_rx_msg.len);
                     log_tx_msg.len = msg.tcp_rx_msg.len;
-                    xQueueSend(logTxQueue, &log_tx_msg, 0);
+                    if (pdPASS != xQueueSend(logTxQueue, &log_tx_msg, 0))
+                    {
+                        statistics.lost_frames_app_to_log++;
+                    }
                 }
-                else
+                else if (command.startsWith("AT+STATS=?"))
                 {
-                    // log_tx_msg.len = sprintf((char *)log_tx_msg.data, "ERROR\r\n");
-                    // xQueueSend(logTxQueue, &log_tx_msg, 0);
+                    msg.tcp_rx_msg.len = sprintf(log_tx_msg.data, "AT+STATS=%u,%u,%u,%u,%u,%u,%u,%u\r\n",
+                                                 statistics.total_rcvd_can_frames,
+                                                 statistics.lost_frames_can_to_app,
+                                                 statistics.lost_frames_app_to_can,
+                                                 statistics.lost_frames_app_to_log,
+                                                 statistics.lost_frames_log_to_tcp,
+                                                 statistics.lost_frames_log_to_serial,
+                                                 statistics.lost_frames_tcp_to_app,
+                                                 statistics.lost_frames_serial_to_app);
+                    if (pdPASS != xQueueSend(logTxQueue, &log_tx_msg, 0))
+                    {
+                        statistics.lost_frames_app_to_log++;
+                    }
                 }
             }
             break;

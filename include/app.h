@@ -18,7 +18,12 @@ typedef struct
     app_msg_type_e type;
     union
     {
-        twai_message_t can_msg;
+        struct
+        {
+            uint64_t timestamp;
+            uint8_t direction;
+            twai_message_t can_msg;
+        };
         tcp_rx_msg_s tcp_rx_msg;
         serial_rx_msg_s serial_rx_msg;
     };
