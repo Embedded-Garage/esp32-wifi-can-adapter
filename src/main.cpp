@@ -52,10 +52,10 @@ void setup()
   }
 
   // Utworzenie zadań FreeRTOS
-  xTaskCreatePinnedToCore(canRxTask, "CAN Rx Task", 4096, NULL, 2, NULL, 1);
   xTaskCreatePinnedToCore(canControlTask, "CAN Control Task", 4096, NULL, 1, NULL, 1);
+  xTaskCreatePinnedToCore(canRxTask, "CAN Rx Task", 4096, NULL, 1, NULL, 1);
   xTaskCreatePinnedToCore(appTask, "App Task", 4096, NULL, 2, NULL, 0);
-  xTaskCreatePinnedToCore(tcpTxTask, "TCP Tx Task", 4096, NULL, 1, NULL, 0);
+  xTaskCreatePinnedToCore(tcpTxTask, "TCP Tx Task", 4096, NULL, 3, NULL, 0);
   xTaskCreatePinnedToCore(serialRxTask, "Serial Rx Task", 4096, NULL, 3, NULL, 1);
   xTaskCreatePinnedToCore(logTxTask, "Log Tx Task", 4096, NULL, 3, NULL, 1);
 }
