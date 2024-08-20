@@ -25,7 +25,7 @@ QueueHandle_t serialTxQueue;
 const int serialTxQueueSize = 10;
 
 QueueHandle_t logTxQueue;
-const int logTxQueueSize = 10;
+const int logTxQueueSize = 100;
 
 bool queues_init(void)
 {
