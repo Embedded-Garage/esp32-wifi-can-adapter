@@ -18,6 +18,7 @@ void canRxTask(void *param)
         {
             statistics.total_rcvd_can_frames++;
             app_message.timestamp = (uint64_t)esp_timer_get_time();
+            app_message.direction = CAN_MSG_DIR_RX;
             if (pdPASS != xQueueSend(appQueue, &app_message, 0))
             {
                 statistics.lost_frames_can_to_app++;

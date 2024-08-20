@@ -27,7 +27,7 @@ void appTask(void *param)
             {
             case APP_MSG_TYPE_CAN_RX:
                 log_tx_msg.len = sprintf(log_tx_msg.data,
-                                         "AT+CAN_FRAME=%llu,%u,%X,%u,%u,%u",
+                                         "AT+CAN_FRAME=%llu,%u,%X,%u,%u,%u,",
                                          msg.timestamp,
                                          msg.direction,
                                          msg.can_msg.identifier,

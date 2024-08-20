@@ -13,6 +13,9 @@ typedef enum
     APP_MSG_TYPE_SERIAL_RX,
 } app_msg_type_e;
 
+#define CAN_MSG_DIR_RX 0u
+#define CAN_MSG_DIR_TX 1u
+
 typedef struct
 {
     app_msg_type_e type;
